@@ -1,0 +1,202 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  password    String
+  displayName String
+  avatarUrl   String?
+  fcmToken    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  couplesAsPartnerA Couple[] @relation("PartnerA")
+  couplesAsPartnerB Couple[] @relation("PartnerB")
+
+  messagesSent     Message[]
+  notesCreated     Note[]
+  lettersAuthored  Letter[]
+  prayersCreated   Prayer[]
+  reflections      Reflection[]
+  gratitudeEntries GratitudeEntry[]
+  jarReasonsAdded  JarReason[]
+}
+
+model Couple {
+  id              String   @id @default(uuid())
+  partnerAId      String
+  partnerBId      String
+  anniversaryDate DateTime?
+  inviteCode      String?  @unique
+  createdAt       DateTime @default(now())
+
+  partnerA User @relation("PartnerA", fields: [partnerAId], references: [id])
+  partnerB User @relation("PartnerB", fields: [partnerBId], references: [id])
+
+  messages        Message[]
+  notes           Note[]
+  letters         Letter[]
+  prayers         Prayer[]
+  reflections     Reflection[]
+  timelineEvents  TimelineEvent[]
+  gratitudeEntries GratitudeEntry[]
+  jarReasons      JarReason[]
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  coupleId  String
+  senderId  String
+  content   String
+  type      String   // text, image, voice, sticker
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // For edited messages
+
+  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  sender User   @relation(fields: [senderId], references: [id])
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  coupleId  String
+  creatorId String
+  title     String?
+  content   String
+  isPinned  Boolean  @default(false)
+  isArchived Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  couple  Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [creatorId], references: [id])
+}
+
+model Letter {
+  id             String   @id @default(uuid())
+  coupleId       String
+  authorId       String
+  title          String
+  content        String
+  deliverAt      DateTime
+  isDraft        Boolean  @default(true)
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+}
+
+model Prayer {
+  id          String   @id @default(uuid())
+  coupleId    String
+  creatorId   String
+  content     String
+  category    String   // Family, Relationship, Career, Health, Gratitude
+  isAnswered  Boolean  @default(false)
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  couple  Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [creatorId], references: [id])
+}
+
+model Verse {
+  id          String   @id @default(uuid())
+  reference   String
+  text        String
+  version     String   // WEB, KJV, etc.
+  date        DateTime @unique
+  isFavorite  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Reflection {
+  id        String   @id @default(uuid())
+  coupleId  String
+  userId    String
+  content   String
+  date      DateTime
+  isShared  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model DiscussionTopic {
+  id        String   @id @default(uuid())
+  question  String
+  type      String   // Romantic, Faith, Future, Marriage, Personal Growth
+  date      DateTime @unique
+  createdAt DateTime @default(now())
+}
+
+model TimelineEvent {
+  id          String   @id @default(uuid())
+  coupleId    String
+  title       String
+  description String?
+  date        DateTime
+  type        String   // Photo, Note, Prayer milestone, Relationship milestone, Special event
+  mediaUrl    String?
+  createdAt   DateTime @default(now())
+
+  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+}
+
+model GratitudeEntry {
+  id        String   @id @default(uuid())
+  coupleId  String
+  userId    String
+  content   String
+  date      DateTime
+  isShared  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model JarReason {
+  id        String   @id @default(uuid())
+  coupleId  String
+  creatorId String
+  content   String
+  category  String?
+  createdAt DateTime @default(now())
+
+  couple  Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [creatorId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // NewMessage, NewPrayer, NewLetter, BedtimeReminder, DiscussionAvailable
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model MediaFile {
+  id        String   @id @default(uuid())
+  url       String
+  type      String   // Image, VoiceNote, Attachment
+  size      Int
+  createdAt DateTime @default(now())
+}
