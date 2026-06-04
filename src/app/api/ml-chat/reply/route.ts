@@ -14,18 +14,21 @@ export async function POST(req: Request) {
     if (!couple) return NextResponse.json({ error: 'Couple not found' }, { status: 404 });
 
     const body = await req.json();
-    const { type, content, mediaUrl, fileName, fileSize, duration } = body;
+    const { messageId, content, type = 'TEXT', mediaUrl } = body;
 
-    if (!type || !['TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SYSTEM'].includes(type)) {
-      return NextResponse.json({ error: 'Invalid or missing type' }, { status: 400 });
+    if (!messageId || (!content && !mediaUrl)) {
+      return NextResponse.json({ error: 'Missing required reply payload parameters' }, { status: 400 });
     }
 
-    if (type === 'TEXT' && (!content || content.trim() === '')) {
-      return NextResponse.json({ error: 'Content is required for TEXT messages' }, { status: 400 });
-    }
+    const originalMessage = await prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        sender: { select: { displayName: true } }
+      }
+    });
 
-    if (type !== 'TEXT' && type !== 'SYSTEM' && !mediaUrl) {
-      return NextResponse.json({ error: 'Media URL is required for media messages' }, { status: 400 });
+    if (!originalMessage) {
+      return NextResponse.json({ error: 'Original message not found' }, { status: 404 });
     }
 
     const message = await prisma.message.create({
@@ -35,17 +38,22 @@ export async function POST(req: Request) {
         type,
         content: content || null,
         mediaUrl: mediaUrl || null,
-        fileName: fileName || null,
-        fileSize: fileSize || null,
-        duration: duration || null,
+        replyToId: messageId,
       },
       include: {
-        sender: { select: { id: true, displayName: true, avatarUrl: true } }
+        sender: { select: { id: true, displayName: true, avatarUrl: true } },
+        replyTo: {
+          select: {
+            id: true,
+            content: true,
+            type: true,
+            mediaUrl: true,
+            sender: { select: { displayName: true } }
+          }
+        }
       }
     });
 
-    // Fire realtime event via Supabase (if client is listening to this channel)
-    // NOTE: Replace 'room_X' with your desired chat format
     const channelName = `chat_${couple.id}`;
     supabase.channel(channelName).send({
       type: 'broadcast',
@@ -56,7 +64,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, message }, { status: 200 });
 
   } catch (error: any) {
-    console.error('[CHAT_SEND_ERROR]', error);
+    console.error('[CHAT_REPLY_ERROR]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

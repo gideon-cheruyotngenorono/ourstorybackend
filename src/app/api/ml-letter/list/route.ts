@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { formatUserWithAvatar } from '@/services/avatar';
 
 export async function GET(req: Request) {
   try {
@@ -36,10 +37,19 @@ export async function GET(req: Request) {
 
     const letters = await prisma.letter.findMany({
       where: whereClause,
-      orderBy: { deliverAt: 'desc' }
+      orderBy: { deliverAt: 'desc' },
+      include: { author: { select: { id: true, displayName: true, avatarUrl: true } } }
     });
 
-    return NextResponse.json({ letters }, { status: 200 });
+    const formattedLetters = letters.map((letter: any) => {
+      const { author, ...rest } = letter;
+      return {
+        ...rest,
+        sender: formatUserWithAvatar(author)
+      };
+    });
+
+    return NextResponse.json({ letters: formattedLetters }, { status: 200 });
   } catch (error: any) {
     console.error('[LETTER_LIST]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

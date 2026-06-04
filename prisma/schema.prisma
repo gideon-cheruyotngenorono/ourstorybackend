@@ -19,6 +19,7 @@ model User {
   password    String
   displayName String
   avatarUrl   String?
+  avatarPath  String?
   fcmToken    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -33,6 +34,7 @@ model User {
   reflections      Reflection[]
   gratitudeEntries GratitudeEntry[]
   jarReasonsAdded  JarReason[]
+  timelineEvents   TimelineEvent[]
 }
 
 model Couple {
@@ -57,17 +59,31 @@ model Couple {
 }
 
 model Message {
-  id        String   @id @default(uuid())
-  coupleId  String
-  senderId  String
-  content   String
-  type      String   // text, image, voice, sticker
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt // For edited messages
+  id                String   @id @default(uuid())
+  coupleId          String
+  senderId          String
+  content           String?
+  type              MessageType
+  mediaUrl          String?
+  thumbnailUrl      String?
+  fileName          String?
+  fileSize          Int?
+  duration          Int?
+  isEdited          Boolean  @default(false)
+  isDeleted         Boolean  @default(false)
+  replyToId         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
-  sender User   @relation(fields: [senderId], references: [id])
+  couple            Couple   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  sender            User     @relation(fields: [senderId], references: [id])
+  
+  replyTo           Message?  @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies           Message[] @relation("MessageReplies")
+  
+  reactions         MessageReaction[]
+  readReceipts      MessageReadReceipt[]
+  starredBy         StarredMessage[]
 }
 
 model Note {
@@ -154,9 +170,11 @@ model TimelineEvent {
   date        DateTime
   type        String   // Photo, Note, Prayer milestone, Relationship milestone, Special event
   mediaUrl    String?
+  userId      String?
   createdAt   DateTime @default(now())
 
   couple Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
 }
 
 model GratitudeEntry {
@@ -200,4 +218,57 @@ model MediaFile {
   type      String   // Image, VoiceNote, Attachment
   size      Int
   createdAt DateTime @default(now())
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  SYSTEM
+}
+
+model MessageReaction {
+  id         String   @id @default(uuid())
+  messageId  String
+  userId     String
+  emoji      String
+  createdAt  DateTime @default(now())
+
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
+model MessageReadReceipt {
+  id          String   @id @default(uuid())
+  messageId   String
+  userId      String
+  readAt      DateTime @default(now())
+
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
+model StarredMessage {
+  id          String   @id @default(uuid())
+  userId      String
+  messageId   String
+  createdAt   DateTime @default(now())
+
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
+model ArchivedChat {
+  id          String   @id @default(uuid())
+  userId      String
+  coupleId    String
+  archivedAt  DateTime @default(now())
+}
+
+model ChatVisibility {
+  id             String   @id @default(uuid())
+  userId         String
+  coupleId       String
+  lastClearedAt  DateTime @default(now())
+
+  @@unique([userId, coupleId])
 }

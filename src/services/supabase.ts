@@ -44,3 +44,26 @@ export async function uploadFile(
     return null;
   }
 }
+
+/**
+ * Helper to delete a file from Supabase Storage
+ */
+export async function removeFile(bucket: string, path: string): Promise<boolean> {
+  if (!supabaseUrl || !supabaseServiceKey) return false;
+
+  try {
+    const { error } = await supabase.storage
+      .from(bucket)
+      .remove([path]);
+
+    if (error) {
+      console.error('Supabase delete error:', error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error during Supabase delete:', error);
+    return false;
+  }
+}

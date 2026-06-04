@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { formatUserWithAvatar } from '@/services/avatar';
 
 export async function GET(req: Request) {
   try {
@@ -19,10 +20,21 @@ export async function GET(req: Request) {
       orderBy: [
         { isAnswered: 'asc' },
         { createdAt: 'desc' }
-      ]
+      ],
+      include: {
+        creator: { select: { id: true, displayName: true, avatarUrl: true } }
+      }
     });
 
-    return NextResponse.json({ prayers }, { status: 200 });
+    const formattedPrayers = prayers.map(prayer => {
+      const { creator, ...rest } = prayer;
+      return {
+        ...rest,
+        createdBy: formatUserWithAvatar(creator)
+      };
+    });
+
+    return NextResponse.json({ prayers: formattedPrayers }, { status: 200 });
   } catch (error: any) {
     console.error('[PRAYER_LIST]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -1,47 +1,60 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
-import { uploadFile } from '@/services/supabase';
+import { supabase } from '@/lib/supabase'; // We'll export the direct supabase client from here or inject dynamically
 
-// App Router handles body stream natively
+const TYPE_LIMITS: Record<string, number> = {
+  IMAGE: 10 * 1024 * 1024,   // 10 MB
+  VIDEO: 50 * 1024 * 1024,   // 50 MB
+  AUDIO: 20 * 1024 * 1024,   // 20 MB
+  FILE: 25 * 1024 * 1024,    // 25 MB
+};
+
 export async function POST(req: Request) {
   try {
     const userId = req.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const type = formData.get('type') as string || 'Attachment';
+    const type = formData.get('type') as string; // IMAGE, VIDEO, AUDIO, FILE
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    if (!file || !type) {
+      return NextResponse.json({ error: 'Missing file or type parameter' }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Generate unique path: <userId>/<timestamp>-<filename>
-    const path = `${userId}/${Date.now()}-${file.name.replace(/\\s+/g, '-')}`;
-
-    // 'our-story-media' is the presumed default bucket
-    const url = await uploadFile('our-story-media', path, buffer, file.type);
-
-    if (!url) {
-      // Return 500 but don't crash if keys aren't preset.
-      return NextResponse.json({ error: 'Failed to upload to storage bucket. Ensure Supabase credentials are valid.' }, { status: 500 });
+    const limit = TYPE_LIMITS[type.toUpperCase()];
+    if (!limit) {
+      return NextResponse.json({ error: 'Invalid media type' }, { status: 400 });
     }
 
-    // Register media file in database
-    const mediaFile = await prisma.mediaFile.create({
-      data: {
-        url,
-        type,
-        size: file.size,
-      }
-    });
+    if (file.size > limit) {
+      return NextResponse.json({ error: `File too large for type ${type}. Maximum is ${limit / 1024 / 1024}MB` }, { status: 413 });
+    }
 
-    return NextResponse.json({ url: mediaFile.url, id: mediaFile.id }, { status: 201 });
+    const ext = file.name.split('.').pop() || 'tmp';
+    const filePath = `chat/${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('media') // Assuming a bucket named 'media' for chats
+      .upload(filePath, file, { contentType: file.type });
+
+    if (uploadError) {
+      console.error('[STORAGE_UPLOAD]', uploadError);
+      return NextResponse.json({ error: 'Failed to upload to storage: ' + uploadError.message }, { status: 500 });
+    }
+
+    const { data } = supabase.storage.from('media').getPublicUrl(filePath);
+
+    return NextResponse.json({
+      success: true,
+      url: data.publicUrl,
+      size: file.size,
+      originalName: file.name
+    }, { status: 200 });
+
   } catch (error: any) {
-    console.error('[STORAGE_UPLOAD]', error);
+    console.error('[STORAGE_ENDPOINT_ERROR]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

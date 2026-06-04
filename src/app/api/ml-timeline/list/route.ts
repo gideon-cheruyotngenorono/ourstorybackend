@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { formatUserWithAvatar } from '@/services/avatar';
 
 export async function GET(req: Request) {
   try {
@@ -18,9 +19,18 @@ export async function GET(req: Request) {
     const events = await prisma.timelineEvent.findMany({
       where: { coupleId: couple.id },
       orderBy: { date: 'desc' },
+      include: { user: { select: { id: true, displayName: true, avatarUrl: true } } }
     });
 
-    return NextResponse.json({ events }, { status: 200 });
+    const formattedEvents = events.map((event: any) => {
+      const { user, ...rest } = event;
+      return {
+        ...rest,
+        author: user ? formatUserWithAvatar(user) : null
+      };
+    });
+
+    return NextResponse.json({ events: formattedEvents }, { status: 200 });
   } catch (error: any) {
     console.error('[TIMELINE_LIST]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

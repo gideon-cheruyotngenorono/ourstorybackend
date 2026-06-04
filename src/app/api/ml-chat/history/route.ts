@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { formatUserWithAvatar } from '@/services/avatar';
 
 export async function GET(req: Request) {
   try {
@@ -24,10 +25,15 @@ export async function GET(req: Request) {
       skip: cursor ? 1 : 0,
       cursor: cursor ? { id: cursor } : undefined,
       orderBy: { createdAt: 'desc' },
-      include: { sender: { select: { id: true, displayName: true } } }
+      include: { sender: { select: { id: true, displayName: true, avatarUrl: true } } }
     });
 
-    return NextResponse.json({ messages }, { status: 200 });
+    const formattedMessages = messages.map(msg => ({
+      ...msg,
+      sender: formatUserWithAvatar(msg.sender)
+    }));
+
+    return NextResponse.json({ messages: formattedMessages }, { status: 200 });
   } catch (error: any) {
     console.error('[CHAT_HISTORY]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
