@@ -16,7 +16,8 @@ datasource db {
 model User {
   id          String   @id @default(uuid())
   email       String   @unique
-  password    String
+  password    String?
+  googleId    String?  @unique
   displayName String
   avatarUrl   String?
   avatarPath  String?
@@ -35,6 +36,18 @@ model User {
   gratitudeEntries GratitudeEntry[]
   jarReasonsAdded  JarReason[]
   timelineEvents   TimelineEvent[]
+  
+  passwordResetTokens PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Couple {
