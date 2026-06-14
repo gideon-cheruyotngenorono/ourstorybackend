@@ -38,7 +38,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       partnerA: formatUserWithAvatar(couple.partnerA),
-      partnerB: formatUserWithAvatar(couple.partnerB),
+      partnerB: couple.partnerB ? formatUserWithAvatar(couple.partnerB) : null,
       daysTogether,
     }, { status: 200 });
 

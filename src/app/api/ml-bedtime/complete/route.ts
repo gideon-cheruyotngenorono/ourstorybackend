@@ -49,7 +49,7 @@ export async function POST(req: Request) {
        await sendNotification(
          partnerUrl.fcmToken,
          "Bedtime Ritual Completed 🌙",
-         `${userId === couple.partnerAId ? couple.partnerA.displayName : couple.partnerB.displayName} just finished their daily ritual!`,
+         `${userId === couple.partnerAId ? couple.partnerA.displayName : couple.partnerB?.displayName || 'Your partner'} just finished their daily ritual!`,
          { route: '/timeline' }
        );
     }

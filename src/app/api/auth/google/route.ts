@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
-import { OAuth2Client } from 'google-auth-library';
+import { firebaseAdmin } from '@/lib/firebase';
 import prisma from '@/lib/prisma';
 import { signAccessToken, signRefreshToken } from '@/lib/jwt';
 import { cookies } from 'next/headers';
-
-// Optional: Provide this in .env. We verify the token cryptographically regardless.
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); 
 
 export async function POST(req: Request) {
   try {
@@ -16,18 +13,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'idToken is required' }, { status: 400 });
     }
 
-    // Verify token with Google's public keys
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: process.env.GOOGLE_CLIENT_ID, // Specify the CLIENT_ID of the app that accesses the backend
-    });
+    // Verify token with Firebase Admin
+    const decodedToken = await firebaseAdmin.auth().verifyIdToken(idToken);
 
-    const payload = ticket.getPayload();
-    if (!payload || !payload.email) {
-      return NextResponse.json({ error: 'Invalid Google Token' }, { status: 401 });
+    if (!decodedToken || !decodedToken.email) {
+      return NextResponse.json({ error: 'Invalid Firebase Google Token' }, { status: 401 });
     }
 
-    const { email, sub: googleId, name, picture } = payload;
+    // Google provides `user_id` inside the decoded token alongside standard payload mappings
+    const email = decodedToken.email;
+    const googleId = decodedToken.uid; 
+    const name = decodedToken.name || 'User';
+    const picture = decodedToken.picture || null;
 
     // Check if user exists (by Google ID or Email)
     let user = await prisma.user.findUnique({ where: { email } });
@@ -45,9 +42,14 @@ export async function POST(req: Request) {
       });
     } else if (!user.googleId) {
       // User exists but has no googleId mapped, link them!
+      // Also sync profile details if they are missing
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { googleId }
+        data: { 
+          googleId,
+          avatarUrl: user.avatarUrl || picture,
+          displayName: user.displayName || name
+        }
       });
     }
 
