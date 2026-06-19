@@ -8,17 +8,19 @@ import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
   try {
+    // Short request id to help correlate logs with client requests
+    const reqId = Math.random().toString(36).slice(2, 9);
     // Require JSON Content-Type to avoid accidental empty form posts
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.toLowerCase().includes('application/json')) {
-      console.error('[AUTH_REGISTER] invalid content-type', { contentType });
-      return NextResponse.json({ error: 'Content-Type must be application/json' }, { status: 400 });
+      console.error('[AUTH_REGISTER] invalid content-type', { contentType, reqId });
+      return NextResponse.json({ error: 'Content-Type must be application/json', reqId }, { status: 400 });
     }
 
     const raw = await req.text();
     if (!raw || raw.trim() === '') {
-      console.error('[AUTH_REGISTER] empty request body');
-      return NextResponse.json({ error: 'Invalid or empty JSON body' }, { status: 400 });
+      console.error('[AUTH_REGISTER] empty request body', { reqId });
+      return NextResponse.json({ error: 'Invalid or empty JSON body', reqId }, { status: 400 });
     }
 
     let body: any;
@@ -30,8 +32,9 @@ export async function POST(req: Request) {
         message: jsonErr?.message,
         contentType,
         bodyPreview: raw.slice(0, 1000),
+        reqId,
       });
-      return NextResponse.json({ error: 'Invalid or empty JSON body' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid or empty JSON body', reqId }, { status: 400 });
     }
 
     // Mask sensitive fields when logging
@@ -39,6 +42,7 @@ export async function POST(req: Request) {
       const safeBody = typeof body === 'object' && body !== null ? { ...body } : body;
       if (safeBody && typeof safeBody === 'object' && 'password' in safeBody) safeBody.password = '[REDACTED]';
       console.info('[AUTH_REGISTER] parsed body', {
+        reqId,
         headers: {
           contentType,
           'user-agent': req.headers.get('user-agent') || undefined,
@@ -52,14 +56,14 @@ export async function POST(req: Request) {
     const parsed = registerSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+      return NextResponse.json({ error: parsed.error.issues[0].message, reqId }, { status: 400 });
     }
 
     const { email, password, displayName } = parsed.data;
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      return NextResponse.json({ error: 'Email already exists' }, { status: 400 });
+      return NextResponse.json({ error: 'Email already exists', reqId }, { status: 400 });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -80,39 +84,49 @@ export async function POST(req: Request) {
         if (dbErr.code === 'P2002') {
           console.warn('[AUTH_REGISTER] Prisma P2002 unique constraint', {
             meta: dbErr.meta,
+            reqId,
           });
-          return NextResponse.json({ error: 'Email already exists' }, { status: 400 });
+          return NextResponse.json({ error: 'Email already exists', reqId }, { status: 400 });
         }
         // Add other Prisma error codes handling if needed
       }
       // For other errors, log and return 500
-      console.error('[AUTH_REGISTER] Prisma error on user.create', dbErr);
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      console.error('[AUTH_REGISTER] Prisma error on user.create', { err: dbErr, reqId });
+      return NextResponse.json({ error: 'Internal server error', reqId }, { status: 500 });
     }
 
     const accessToken = signAccessToken({ userId: user.id });
     const refreshToken = signRefreshToken({ userId: user.id });
 
     // Store refresh token securely in an httpOnly cookie
-    const cookieStore = await cookies();
-    cookieStore.set('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-      path: '/',
-    });
+    try {
+      const cookieStore = await cookies();
+      cookieStore.set('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60, // 7 days
+        path: '/',
+      });
+    } catch (cookieErr) {
+      // If cookie setting fails in the deployment environment, log it and include reqId
+      console.warn('[AUTH_REGISTER] failed to set cookie', { cookieErr, reqId });
+      // Continue — we still return success but warn the client the refresh cookie wasn't set.
+      return NextResponse.json({ error: 'Failed to set refresh cookie', reqId }, { status: 500 });
+    }
 
     return NextResponse.json(
       {
         message: 'Registration successful',
         user: { id: user.id, email: user.email, displayName: user.displayName },
         accessToken,
+        reqId,
       },
       { status: 201 }
     );
   } catch (error: any) {
-    console.error('[AUTH_REGISTER]', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const reqId = Math.random().toString(36).slice(2, 9);
+    console.error('[AUTH_REGISTER]', { err: error, reqId });
+    return NextResponse.json({ error: 'Internal server error', reqId }, { status: 500 });
   }
 }
